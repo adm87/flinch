@@ -1,0 +1,113 @@
+{ "frames": {
+   "player01Idle 0": {
+    "frame": { "x": 0, "y": 0, "w": 24, "h": 24 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 24, "h": 24 },
+    "sourceSize": { "w": 24, "h": 24 },
+    "duration": 100
+   },
+   "player01Jump 0": {
+    "frame": { "x": 24, "y": 0, "w": 24, "h": 24 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 24, "h": 24 },
+    "sourceSize": { "w": 24, "h": 24 },
+    "duration": 100
+   },
+   "player02Idle 0": {
+    "frame": { "x": 48, "y": 0, "w": 24, "h": 24 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 24, "h": 24 },
+    "sourceSize": { "w": 24, "h": 24 },
+    "duration": 100
+   },
+   "player02Jump 0": {
+    "frame": { "x": 72, "y": 0, "w": 24, "h": 24 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 24, "h": 24 },
+    "sourceSize": { "w": 24, "h": 24 },
+    "duration": 100
+   },
+   "player03Idle 0": {
+    "frame": { "x": 0, "y": 24, "w": 24, "h": 24 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 24, "h": 24 },
+    "sourceSize": { "w": 24, "h": 24 },
+    "duration": 100
+   },
+   "player03Jump 0": {
+    "frame": { "x": 24, "y": 24, "w": 24, "h": 24 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 24, "h": 24 },
+    "sourceSize": { "w": 24, "h": 24 },
+    "duration": 100
+   },
+   "player04Idle 0": {
+    "frame": { "x": 48, "y": 24, "w": 24, "h": 24 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 24, "h": 24 },
+    "sourceSize": { "w": 24, "h": 24 },
+    "duration": 100
+   },
+   "player04Jump 0": {
+    "frame": { "x": 72, "y": 24, "w": 24, "h": 24 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 24, "h": 24 },
+    "sourceSize": { "w": 24, "h": 24 },
+    "duration": 100
+   },
+   "player05Idle 0": {
+    "frame": { "x": 0, "y": 48, "w": 24, "h": 24 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 24, "h": 24 },
+    "sourceSize": { "w": 24, "h": 24 },
+    "duration": 100
+   },
+   "player05Jump 0": {
+    "frame": { "x": 24, "y": 48, "w": 24, "h": 24 },
+    "rotated": false,
+    "trimmed": false,
+    "spriteSourceSize": { "x": 0, "y": 0, "w": 24, "h": 24 },
+    "sourceSize": { "w": 24, "h": 24 },
+    "duration": 100
+   }
+ },
+ "meta": {
+  "app": "http://www.aseprite.org/",
+  "version": "1.3.15.5-x64",
+  "image": "characters_img.png",
+  "format": "RGBA8888",
+  "size": { "w": 96, "h": 72 },
+  "scale": "1",
+  "frameTags": [
+   { "name": "player01Walk", "from": 0, "to": 1, "direction": "forward", "color": "#000000ff" },
+   { "name": "player01Idle", "from": 0, "to": 0, "direction": "forward", "color": "#000000ff" },
+   { "name": "player01Jump", "from": 1, "to": 1, "direction": "forward", "color": "#000000ff" },
+   { "name": "player02Walk", "from": 2, "to": 3, "direction": "forward", "color": "#000000ff" },
+   { "name": "player02Idle", "from": 2, "to": 2, "direction": "forward", "color": "#000000ff" },
+   { "name": "player02Jump", "from": 3, "to": 3, "direction": "forward", "color": "#000000ff" },
+   { "name": "player03Walk", "from": 4, "to": 5, "direction": "forward", "color": "#000000ff" },
+   { "name": "player03Idle", "from": 4, "to": 4, "direction": "forward", "color": "#000000ff" },
+   { "name": "player03Jump", "from": 5, "to": 5, "direction": "forward", "color": "#000000ff" },
+   { "name": "player04Walk", "from": 6, "to": 7, "direction": "forward", "color": "#000000ff" },
+   { "name": "player04Idle", "from": 6, "to": 6, "direction": "forward", "color": "#000000ff" },
+   { "name": "player04Jump", "from": 7, "to": 7, "direction": "forward", "color": "#000000ff" },
+   { "name": "player05Walk", "from": 9, "to": 10, "direction": "forward", "color": "#000000ff" },
+   { "name": "player05Idle", "from": 9, "to": 9, "direction": "forward", "color": "#000000ff" },
+   { "name": "player05Jump", "from": 10, "to": 10, "direction": "forward", "color": "#000000ff" }
+  ],
+  "layers": [
+   { "name": "Layer", "opacity": 255, "blendMode": "normal" }
+  ],
+  "slices": [
+  ]
+ }
+}
