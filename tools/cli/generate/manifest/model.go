@@ -8,6 +8,7 @@ type Model struct {
 
 type Directory struct {
 	Name       string
+	Path       string
 	IsEmbedded bool
 	Files      []File
 }

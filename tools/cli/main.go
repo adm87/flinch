@@ -13,7 +13,7 @@ func main() {
 	)
 
 	command := &cobra.Command{
-		Use: "flinch",
+		Use: "flinch-cli",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()
 		},
