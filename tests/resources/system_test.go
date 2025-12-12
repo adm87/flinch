@@ -19,7 +19,7 @@ func NewDataManager() *DataManager {
 	}
 }
 
-func (m *DataManager) Load(asset resources.Asset) resources.ResourceLoader {
+func (m *DataManager) Load(asset resources.Asset) resources.LoadJob {
 	return func(ctx *resources.LoaderContext) error {
 		lock := ctx.Lock(asset)
 		defer lock.Release()
@@ -62,7 +62,9 @@ func assertPanicIs(t *testing.T, expected error, fn func()) {
 func TestLoadOne(t *testing.T) {
 	manager := NewDataManager()
 
-	if err := data.Static.Load(manager.Load(data.Tile0000)); err != nil {
+	if err := data.Static.LoadQueue(resources.LoaderQueue{
+		manager.Load(data.Tile0000),
+	}); err != nil {
 		t.Fatalf("failed to load asset: %v", err)
 	}
 
@@ -86,12 +88,12 @@ func TestLoadTen(t *testing.T) {
 		}
 	}
 
-	loaders := make([]resources.ResourceLoader, 0, len(assets))
+	loaders := make(resources.LoaderQueue, 0, len(assets))
 	for _, asset := range assets {
 		loaders = append(loaders, manager.Load(asset))
 	}
 
-	if err := data.Static.Load(loaders...); err != nil {
+	if err := data.Static.LoadQueue(loaders); err != nil {
 		t.Fatalf("failed to load assets: %v", err)
 	}
 
@@ -117,12 +119,12 @@ func TestLoadHundred(t *testing.T) {
 		}
 	}
 
-	loaders := make([]resources.ResourceLoader, 0, len(assets))
+	loaders := make(resources.LoaderQueue, 0, len(assets))
 	for _, asset := range assets {
 		loaders = append(loaders, manager.Load(asset))
 	}
 
-	if err := data.Static.Load(loaders...); err != nil {
+	if err := data.Static.LoadQueue(loaders); err != nil {
 		t.Fatalf("failed to load assets: %v", err)
 	}
 
@@ -140,12 +142,12 @@ func TestLoadHundred(t *testing.T) {
 func TestLoadAll(t *testing.T) {
 	manager := NewDataManager()
 
-	loaders := make([]resources.ResourceLoader, 0, len(data.StaticManifest))
+	loaders := make(resources.LoaderQueue, 0, len(data.StaticManifest))
 	for asset := range data.StaticManifest {
 		loaders = append(loaders, manager.Load(asset))
 	}
 
-	if err := data.Static.Load(loaders...); err != nil {
+	if err := data.Static.LoadQueue(loaders); err != nil {
 		t.Fatalf("failed to load assets: %v", err)
 	}
 
@@ -170,7 +172,9 @@ func TestMissingFilesystem(t *testing.T) {
 	data.Static.UseFilesystem(nil)
 	manager := NewDataManager()
 
-	err := data.Static.Load(manager.Load(data.Tile0000))
+	err := data.Static.LoadQueue(resources.LoaderQueue{
+		manager.Load(data.Tile0000),
+	})
 
 	if err == nil {
 		t.Fatalf("expected error when loading with nil filesystem, got nil")
@@ -186,7 +190,9 @@ func TestAssetNotInFilesystem(t *testing.T) {
 
 	nilAsset := resources.Asset(^uint64(0))
 
-	err := data.Static.Load(manager.Load(nilAsset))
+	err := data.Static.LoadQueue(resources.LoaderQueue{
+		manager.Load(nilAsset),
+	})
 
 	if err == nil {
 		t.Fatalf("expected error when loading non-existent asset, got nil")
@@ -199,24 +205,28 @@ func TestAssetNotInFilesystem(t *testing.T) {
 
 func TestNestedLockPanics(t *testing.T) {
 	assertPanicIs(t, resources.ErrBatchAlreadyLocked, func() {
-		data.Static.Load(func(ctx *resources.LoaderContext) error {
-			lock1 := ctx.Lock(data.Tile0000)
-			defer lock1.Release()
+		data.Static.LoadQueue(resources.LoaderQueue{
+			func(ctx *resources.LoaderContext) error {
+				lock1 := ctx.Lock(data.Tile0000)
+				defer lock1.Release()
 
-			_ = ctx.Lock(data.Tile0001) // must panic
-			return nil
+				_ = ctx.Lock(data.Tile0001) // must panic
+				return nil
+			},
 		})
 	})
 }
 
 func TestDoubleReleasePanics(t *testing.T) {
 	assertPanicIs(t, resources.ErrDoubleRelease, func() {
-		data.Static.Load(func(ctx *resources.LoaderContext) error {
-			lock := ctx.Lock(data.Tile0000)
-			lock.Release()
+		data.Static.LoadQueue(resources.LoaderQueue{
+			func(ctx *resources.LoaderContext) error {
+				lock := ctx.Lock(data.Tile0000)
+				lock.Release()
 
-			lock.Release() // must panic
-			return nil
+				lock.Release() // must panic
+				return nil
+			},
 		})
 	})
 }

@@ -2,7 +2,6 @@ package resources
 
 import (
 	"context"
-	"errors"
 	"io/fs"
 	"strings"
 	"sync"
@@ -80,12 +79,22 @@ func (lc *LoaderContext) ReadBytes(asset Asset) ([]byte, error) {
 	return lc.system.ReadBytes(asset)
 }
 
-type ResourceLoader func(ctx *LoaderContext) error
+// LoadJob defines a function type for loading or unloading resources.
+//
+// It receives a LoaderContext to facilitate resource access and management.
+// LoadJobs should return an error if the loading or unloading operation fails.
+// Returning ErrSkipped indicates that the operation was intentionally skipped.
+type LoadJob func(ctx *LoaderContext) error
 
-// NoopResourceLoader is a ResourceLoader that performs no operation. Use this to skip loading or unloading.
-var NoopResourceLoader ResourceLoader = func(ctx *LoaderContext) error {
+// NoopLoadJob is a LoadJob that performs no operation. Use this to skip loading or unloading.
+var NoopLoadJob LoadJob = func(ctx *LoaderContext) error {
 	return nil
 }
+
+// LoaderQueue represents a sequence of LoadJobs to be executed in order.
+//
+// It can be used to batch multiple loading or unloading operations together.
+type LoaderQueue []LoadJob
 
 // =============== Errors ===============
 
@@ -238,18 +247,19 @@ func (rs *ResourceSystem) ReadBytes(asset Asset) ([]byte, error) {
 	return data, nil
 }
 
-// Load loads the specified assets into the resource system.
-func (rs *ResourceSystem) Load(loaders ...ResourceLoader) error {
+// LoadQueue loads the specified assets into the resource system.
+func (rs *ResourceSystem) LoadQueue(queue LoaderQueue) error {
 	cancelCtx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	for _, loader := range loaders {
-		ctx := &LoaderContext{
-			Context: cancelCtx,
-			system:  rs,
-			batch:   0, // TASK: 0 is placeholder, will be replaced with actual batch index in the future
-		}
-		if err := loader(ctx); err != nil && !errors.Is(err, ErrSkipped) {
+	ctx := &LoaderContext{
+		Context: cancelCtx,
+		system:  rs,
+		batch:   0, // TASK: 0 is placeholder, will be replaced with actual batch index in the future
+	}
+
+	for i := range queue {
+		if err := queue[i](ctx); err != nil {
 			return err
 		}
 	}
