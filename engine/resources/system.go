@@ -108,7 +108,7 @@ func (rs *ResourceSystem) SetFileSystem(fs fs.FS) {
 	rs.filesystem = fs
 }
 
-// AcquireAssetLock attempts to acquire a lock for the specified asset within the resource system.
+// LockAsset attempts to acquire a lock for the specified asset within the resource system.
 //
 // If the asset is already locked by another batch, this method will block until the lock is available.
 //
