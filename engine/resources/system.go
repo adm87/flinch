@@ -1,278 +1,200 @@
 package resources
 
 import (
-	"context"
+	"fmt"
+	"io"
 	"io/fs"
-	"strings"
 	"sync"
+	"sync/atomic"
 )
-
-// noCopy is a Go trick to prevent copying of structs that embed it.
-//
-// See https://golang.org/issues/8005#issuecomment-190753527 for details.
-type noCopy struct{}
-
-func (*noCopy) Lock()   {}
-func (*noCopy) Unlock() {}
-
-// =============== Asset Types ===============
-
-// Asset represents a unique identifier for an asset within a resource system.
-type Asset uint64
-
-// AssetPath represents the file path of an asset within a resource system.
-type AssetPath string
-
-// AssetManifest maps assets to their corresponding file paths.
-type AssetManifest map[Asset]AssetPath
-
-// AssetLock represents a lock for a specific asset within a resource system.
-//
-// It encapsulates the mutex used to synchronize access to the asset,
-// along with references to the resource system and the loader context.
-type AssetLock struct {
-	_ noCopy
-
-	lock    *sync.Mutex
-	context *LoaderContext
-}
-
-// Release releases the lock held by the AssetGuard.
-//
-// Once released, the guard should be considered invalid and should not be used again.
-// Subsequent calls to Release will result in a panic
-func (al *AssetLock) Release() {
-	if al.lock == nil {
-		panic(ErrDoubleRelease)
-	}
-
-	al.lock.Unlock()
-	al.context.system.release(al)
-
-	al.lock = nil
-}
-
-// =============== Resource Loader ===============
-
-// LoaderContext provides context for resource loading operations.
-//
-// It includes a reference to the resource system and the batch index
-// for the current loading operation.
-type LoaderContext struct {
-	context.Context
-	system *ResourceSystem
-	batch  uint
-}
-
-// Lock acquires an exclusive lock for the specified asset.
-//
-// The returned AssetLock must be released by calling its Release method
-// once the asset is no longer needed by the loader.
-//
-// Panics if the batch already holds an acquired asset lock.
-func (lc *LoaderContext) Lock(asset Asset) *AssetLock {
-	return lc.system.lockAsset(lc, asset)
-}
-
-// ReadBytes reads the raw byte data of the specified asset from the resource system.
-func (lc *LoaderContext) ReadBytes(asset Asset) ([]byte, error) {
-	return lc.system.ReadBytes(asset)
-}
-
-// LoadJob defines a function type for loading or unloading resources.
-//
-// It receives a LoaderContext to facilitate resource access and management.
-// LoadJobs should return an error if the loading or unloading operation fails.
-// Returning ErrSkipped indicates that the operation was intentionally skipped.
-type LoadJob func(ctx *LoaderContext) error
-
-// NoopLoadJob is a LoadJob that performs no operation. Use this to skip loading or unloading.
-var NoopLoadJob LoadJob = func(ctx *LoaderContext) error {
-	return nil
-}
-
-// LoaderQueue represents a sequence of LoadJobs to be executed in order.
-//
-// It can be used to batch multiple loading or unloading operations together.
-type LoaderQueue []LoadJob
-
-// =============== Errors ===============
-
-type ResourceError string
-
-func (re ResourceError) Error() string {
-	return string(re)
-}
 
 var (
-	ErrSkipped            = ResourceError("resource loading/unloading skipped")
-	ErrMissingFilesystem  = ResourceError("missing filesystem for resource system")
-	ErrNotInFilesystem    = ResourceError("asset not found in linked filesystem")
-	ErrBatchAlreadyLocked = ResourceError("batch already has an acquired asset lock")
-	ErrDoubleRelease      = ResourceError("attempted to release an already released AssetLock")
+	batchID = atomic.Uint64{}
+
+	assetLocks = &sync.Pool{
+		New: func() any {
+			return &AssetLock{}
+		},
+	}
 )
 
-// =============== Resource System Options ===============
+// ============================== Assets ==============================
 
-type ResourceSystemOptions struct {
-	// TrimRoot indicates whether to trim the root directory from asset paths when reading from the filesystem.
-	//
-	// Some filesystems may include the root directory in asset paths, which can lead to mismatches with the manifest.
-	// Enabling this option ensures that asset paths are consistent with the manifest by removing the root directory prefix.
-	TrimRoot bool
+// Asset is a unique identifier for a resource within an AssetManifest.
+type Asset uint64
 
-	// BatchSize defines the number of assets to process in a single batch during loading or unloading.
-	// A value of 0 indicates that all assets should be processed in a single batch.
-	//
-	// Batches are loaded in parallel, be sure to consider thread-safety when using this option.
-	// Resource systems provide locking mechanisms for individual assets to help with thread-safety.
-	//
-	// Default is 0.
-	BatchSize uint
+// AssetManifest maps Asset identifiers to their corresponding file paths.
+type AssetManifest map[Asset]string
+
+// AssetLock is a guard used to prevent multiple threads from operating on the same resource simultaneously.
+//
+// Each AssetLock must be released exactly once by calling Release(). Calling Release() multiple times
+// or using an AssetLock after release will panic.
+//
+// AssetLocks are pooled and reused internally - do not retain references after calling Release().
+type AssetLock struct {
+	noCopy
+
+	batchID uint64 // Associated batch ID that currently holds the lock
+	asset   Asset  // The asset being locked
+
+	rs      *ResourceSystem // The ResourceSystem managing this lock
+	assetMu *sync.Mutex     // Mutex for the specific asset
 }
 
-// =============== Resource System ===============
-
-// ResourceSystem manages the loading and unloading of assets from a linked filesystem.
+// Release unlocks the AssetLock, allowing other threads to acquire the resource.
 //
-// It provides mechanisms for asset locking to ensure thread-safe access during loading operations.
-// Each resource system has its own manifest mapping assets to file paths.
-// Multiple resource systems can coexist, each managing its own set of assets and filesystem.
-type ResourceSystem struct {
-	locks      map[Asset]*sync.Mutex
-	batchLocks map[uint]*AssetLock
-	mu         sync.Mutex
+// This method must be called exactly once. Calling Release() multiple times will panic.
+// After calling Release(), the AssetLock should not be used further.
+func (al *AssetLock) Release() {
+	if al.assetMu == nil {
+		panic("AssetLock released multiple times. DO NOT release an AssetLock more than once.")
+	}
 
-	name       string
+	al.assetMu.Unlock()
+	al.assetMu = nil
+
+	al.rs.lockReleased(al)
+}
+
+// ============================== Resource System ==============================
+
+// ResourceSystemOptions defines configuration options for a ResourceSystem.
+type ResourceSystemOptions struct {
+	// TrimRoot indicates whether to trim the root directory from resource paths.
+	//
+	// Some filesystems may require the root directory to be trimmed from resource paths
+	// to correctly locate resources.
+	TrimRoot bool
+}
+
+// ResourceSystem represents a collection of resources, providing utilities for loading and managing them.
+//
+// ResourceSystem is safe for concurrent use by multiple goroutines. It manages per-asset locking to
+// ensure only one goroutine can load or operate on a specific asset at a time, while allowing concurrent
+// access to different assets.
+//
+// Note: The ResourceSystem does not manage the lifecycle of the loaded assets themselves. It is the caller's
+// responsibility to handle asset caching, unloading, and memory management as needed.
+type ResourceSystem struct {
 	options    ResourceSystemOptions
 	manifest   AssetManifest
 	filesystem fs.FS
+	name       string
+
+	locks   map[uint64]*AssetLock
+	assetMu map[Asset]*sync.Mutex
+	mu      sync.RWMutex
 }
 
+// NewResourceSystem creates a new ResourceSystem with the given name, manifest, and options.
 func NewResourceSystem(name string, manifest AssetManifest, options ResourceSystemOptions) *ResourceSystem {
 	return &ResourceSystem{
-		locks:      make(map[Asset]*sync.Mutex, len(manifest)),
-		batchLocks: make(map[uint]*AssetLock),
-		manifest:   manifest,
-		name:       name,
-		options:    options,
+		locks:    make(map[uint64]*AssetLock),
+		assetMu:  make(map[Asset]*sync.Mutex),
+		name:     name,
+		manifest: manifest,
+		options:  options,
 	}
 }
 
-func (rs *ResourceSystem) release(lock *AssetLock) {
+// SetFileSystem sets the filesystem to be used by the ResourceSystem for loading assets.
+//
+// The filesystem must implement the fs.FS interface. If no filesystem is set, attempts to
+// read assets will result in an error.
+func (rs *ResourceSystem) SetFileSystem(fs fs.FS) {
 	rs.mu.Lock()
-	delete(rs.batchLocks, lock.context.batch)
-	rs.mu.Unlock()
+	defer rs.mu.Unlock()
+	rs.filesystem = fs
 }
 
-// lockAsset acquires an exclusive lock for the given asset.
+// AcquireAssetLock attempts to acquire a lock for the specified asset within the resource system.
 //
-// Each asset has its own mutex, allowing different assets to be loaded in
-// parallel while ensuring that only one batch loads a specific asset at
-// a time.
+// If the asset is already locked by another batch, this method will block until the lock is available.
 //
-// This function enforces a "one asset lock at a time per batch" rule.
-// A batch must release its current asset lock before acquiring another.
+// The batchID should be unique per loading operation (typically a goroutine ID or operation ID).
+// A batch can only hold one lock at a time - attempting to acquire multiple locks simultaneously
+// will panic.
 //
-// Violations result in a panic.
-func (rs *ResourceSystem) lockAsset(ctx *LoaderContext, asset Asset) *AssetLock {
-	// Note:
-	// We first lock the resource system to safely access the locks map.
-	// Then we lock the specific asset's mutex.
-	// This ordering prevents potential deadlocks.
-
+// The returned AssetLock must be released by calling Release() exactly once when done.
+func (rs *ResourceSystem) LockAsset(batchID uint64, asset Asset) *AssetLock {
 	rs.mu.Lock()
-	lock, exists := rs.locks[asset]
-	if !exists {
-		lock = &sync.Mutex{}
-		rs.locks[asset] = lock
-	}
-	rs.mu.Unlock()
-
-	lock.Lock()
-
-	rs.mu.Lock()
-	// Enforce one asset lock at a time per batch
-	if _, exists := rs.batchLocks[ctx.batch]; exists {
+	if _, exists := rs.manifest[asset]; !exists {
 		rs.mu.Unlock()
-		lock.Unlock()
-		panic(ErrBatchAlreadyLocked)
+		panic(fmt.Sprintf("asset 0x%x does not exist in resource system %s", asset, rs.name))
 	}
 
-	assetLock := &AssetLock{
-		lock:    lock,
-		context: ctx,
+	if _, exists := rs.locks[batchID]; exists {
+		rs.mu.Unlock()
+		panic(fmt.Sprintf("resource batch %d attempted to acquire multiple locks simultaneously", batchID))
 	}
-	rs.batchLocks[ctx.batch] = assetLock
+
+	assetMutex, exists := rs.assetMu[asset]
+	if !exists {
+		assetMutex = &sync.Mutex{}
+		rs.assetMu[asset] = assetMutex
+	}
+
+	lock := assetLocks.Get().(*AssetLock)
+	lock.batchID = batchID
+	lock.asset = asset
+	lock.assetMu = assetMutex
+	lock.rs = rs
+
+	rs.locks[batchID] = lock
 	rs.mu.Unlock()
 
-	return assetLock
-}
+	assetMutex.Lock()
 
-// Name returns the name of the resource system.
-func (rs *ResourceSystem) Name() string {
-	return rs.name
-}
-
-// Contains checks if the asset exists in the resource system's manifest.
-func (rs *ResourceSystem) Contains(asset Asset) bool {
-	_, exists := rs.manifest[asset]
-	return exists
+	return lock
 }
 
 // ReadBytes reads the raw byte data of the specified asset from the resource system.
+//
+// If the asset does not exist, an error is returned.
 func (rs *ResourceSystem) ReadBytes(asset Asset) ([]byte, error) {
-	if !rs.Contains(asset) {
-		return nil, ErrNotInFilesystem
+	rs.mu.RLock()
+	path := rs.manifest[asset]
+	fs := rs.filesystem
+	rs.mu.RUnlock()
+
+	if fs == nil {
+		return nil, fmt.Errorf("resource system %s has no associated filesystem", rs.name)
 	}
 
-	fsys := rs.Filesystem()
-	if fsys == nil {
-		return nil, ErrMissingFilesystem
-	}
-
-	path := string(rs.manifest[asset])
 	if rs.options.TrimRoot {
-		parts := strings.SplitN(path, "/", 2)
-		if len(parts) == 2 {
-			path = parts[1]
-		}
+		path = trimAssetPathRoot(path)
 	}
 
-	data, err := fs.ReadFile(fsys, path)
+	file, err := fs.Open(path)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to open asset 0x%x (%s) in resource system %s: %w", asset, path, rs.name, err)
 	}
+	defer file.Close()
 
-	return data, nil
+	return io.ReadAll(file)
 }
 
-// LoadQueue loads the specified assets into the resource system.
-func (rs *ResourceSystem) LoadQueue(queue LoaderQueue) error {
-	cancelCtx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	ctx := &LoaderContext{
-		Context: cancelCtx,
-		system:  rs,
-		batch:   0, // TASK: 0 is placeholder, will be replaced with actual batch index in the future
+// CreateBatch creates a new LoadingOperation batch with the specified loading tasks.
+//
+// The returned LoadingOperation can be executed to perform the loading tasks within the resource system.
+func (rs *ResourceSystem) CreateBatch(tasks ...LoadingTask) *LoadingOperation {
+	return &LoadingOperation{
+		batchID: batchID.Add(1),
+		rs:      rs,
+		tasks:   tasks,
 	}
-
-	for i := range queue {
-		if err := queue[i](ctx); err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
 
-// UseFilesystem links a filesystem to the resource system for asset loading.
-func (rs *ResourceSystem) UseFilesystem(filesystem fs.FS) {
-	rs.filesystem = filesystem
-}
+// lockReleased is an internal method called when an AssetLock is released.
+//
+// This method removes the lock from the active locks map and returns it to the pool.
+// Asset mutexes are intentionally kept in the assetMu map to prevent race conditions
+// where threads may hold references to mutexes after unlocking rs.mu.
+func (rs *ResourceSystem) lockReleased(lock *AssetLock) {
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
 
-// Filesystem returns the linked filesystem of the resource system.
-func (rs *ResourceSystem) Filesystem() fs.FS {
-	return rs.filesystem
+	delete(rs.locks, lock.batchID)
+	assetLocks.Put(lock)
 }

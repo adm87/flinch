@@ -61,5 +61,5 @@ var (
 // =============== Initialization ===============
 
 func init() {
-	Static.UseFilesystem(staticEmbeddedFS)
+	Static.SetFileSystem(staticEmbeddedFS)
 }

@@ -65,7 +65,7 @@ var (
 func init() {
 {{- range .Directories }}
 	{{- if .IsEmbedded }}
-	{{ toIdentifier .Name }}.UseFilesystem({{ toIdentifier .Name | camel }}EmbeddedFS)
+	{{ toIdentifier .Name }}.SetFileSystem({{ toIdentifier .Name | camel }}EmbeddedFS)
 	{{- end }}
 {{- end }}
 }
