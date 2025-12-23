@@ -1,5 +1,7 @@
 package resources
 
+import "strings"
+
 // noCopy may be embedded into structs which must not be copied
 type noCopy struct{}
 
@@ -10,8 +12,9 @@ func (*noCopy) Lock() {}
 func (*noCopy) Unlock() {}
 
 func trimAssetPathRoot(path string) string {
-	if len(path) > 0 && (path[0] == '/' || path[0] == '\\') {
-		return path[1:]
+	parts := strings.SplitN(path, "/", 2)
+	if len(parts) < 2 {
+		return path
 	}
-	return path
+	return parts[1]
 }

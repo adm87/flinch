@@ -3,6 +3,7 @@ package data
 
 import (
 	"embed"
+
 	"github.com/adm87/flinch/engine/resources"
 )
 
@@ -16,6 +17,7 @@ var staticEmbeddedFS embed.FS
 const (
 	CharactersData          resources.Asset = 0xfca5063c33d5d3f6 // assets/aseprite/characters/characters_data.json
 	CharactersImg           resources.Asset = 0x17d0b26b6cf1aecc // assets/aseprite/characters/characters_img.png
+	SampleA                 resources.Asset = 0x6b45fe0a52c037d3 // assets/images/SampleA.png
 	TilemapExampleA         resources.Asset = 0x7d30d7ac63574117 // assets/tiled/map01/tilemap-example-a.tmx
 	TilemapExampleB         resources.Asset = 0x9e04cca827d1ffc6 // assets/tiled/map02/tilemap-example-b.tmx
 	TilemapCharactersPacked resources.Asset = 0x887669217c4d6120 // assets/tiled/shared/images/tilemap-characters_packed.png
@@ -31,6 +33,7 @@ var (
 	AssetsManifest = resources.AssetManifest{
 		0xfca5063c33d5d3f6: "assets/aseprite/characters/characters_data.json",
 		0x17d0b26b6cf1aecc: "assets/aseprite/characters/characters_img.png",
+		0x6b45fe0a52c037d3: "assets/images/SampleA.png",
 		0x7d30d7ac63574117: "assets/tiled/map01/tilemap-example-a.tmx",
 		0x9e04cca827d1ffc6: "assets/tiled/map02/tilemap-example-b.tmx",
 		0x887669217c4d6120: "assets/tiled/shared/images/tilemap-characters_packed.png",

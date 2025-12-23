@@ -1,7 +1,9 @@
 package resources
 
+import "github.com/adm87/flinch/engine/flinch"
+
 // LoadingTask is a function type that defines a single loading task within a loading operation.
-type LoadingTask func(rs *ResourceSystem, batchID uint64) error
+type LoadingTask func(ctx *flinch.Context, rs *ResourceSystem, batchID uint64) error
 
 // LoadingOperation represents a batch of loading tasks to be executed within a resource system.
 type LoadingOperation struct {
@@ -16,9 +18,9 @@ func (lo *LoadingOperation) AddTask(task LoadingTask) {
 }
 
 // Execute performs all loading tasks within the LoadingOperation.
-func (lo *LoadingOperation) Execute() error {
+func (lo *LoadingOperation) Execute(ctx *flinch.Context) error {
 	for _, task := range lo.tasks {
-		if err := task(lo.rs, lo.batchID); err != nil {
+		if err := task(ctx, lo.rs, lo.batchID); err != nil {
 			return err
 		}
 	}
