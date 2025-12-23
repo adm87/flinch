@@ -13,9 +13,10 @@ import (
 var SplashScreenID uint64 = encoding.HashType[SplashScreen]()
 
 type SplashScreen struct {
-	sequence  *flinch.Sequence
-	splashImg *ebiten.Image
-	opacity   float32
+	sequence *flinch.Sequence
+	opacity  float32
+	width    int
+	height   int
 }
 
 func NewSplashScreen() *SplashScreen {
@@ -30,6 +31,11 @@ func (ss *SplashScreen) Enter(ctx *flinch.Context) error {
 	))
 	if err := splashScreenLoader.Execute(ctx); err != nil {
 		ctx.Logger().Error("failed to load splash screen", "error", err.Error())
+	}
+
+	if img, exists := images.Get(data.Splash1920x1080Black); exists {
+		ss.width = img.Bounds().Dx()
+		ss.height = img.Bounds().Dy()
 	}
 
 	ss.sequence = flinch.NewSequence(
@@ -60,20 +66,15 @@ func (ss *SplashScreen) Update(ctx *flinch.Context) (uint64, error) {
 }
 
 func (ss *SplashScreen) Draw(ctx *flinch.Context, screen *ebiten.Image) {
-	op := &ebiten.DrawImageOptions{}
-	op.ColorScale.ScaleAlpha(ss.opacity)
-
-	splashImg, exists := images.Get(data.Splash1920x1080Black)
-	if !exists {
-		ctx.Logger().Error("splash screen image not found in cache")
-		return
+	if img, exists := images.Get(data.Splash1920x1080Black); exists {
+		op := &ebiten.DrawImageOptions{}
+		op.ColorScale.ScaleAlpha(ss.opacity)
+		screen.DrawImage(img, op)
 	}
-
-	screen.DrawImage(splashImg, op)
 }
 
 func (ss *SplashScreen) Layout(outsideWidth, outsideHeight int) (int, int) {
-	return 1920, 1080
+	return ss.width, ss.height
 }
 
 func (ss *SplashScreen) fadeSplashScreenIn(ctx *flinch.Context, duration float32) flinch.Action {
