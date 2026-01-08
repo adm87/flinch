@@ -1,39 +1,75 @@
 package game
 
 import (
+	"image/color"
+
 	"github.com/adm87/flinch/engine/flinch"
-	"github.com/adm87/flinch/game/src/game/states"
+	"github.com/adm87/flinch/game/src/game/states/boot"
+	"github.com/adm87/flinch/game/src/game/states/gameplay"
+	"github.com/adm87/flinch/game/src/game/states/splashscreen"
+	"github.com/adm87/flinch/game/src/state"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
-type Game struct {
-	ctx    *flinch.Context
-	states *GameStateMachine
-}
+const (
+	TargetWidth  = 1280
+	TargetHeight = 720
+)
 
-func NewGame(ctx *flinch.Context) *Game {
-	ebiten.SetWindowTitle("Flinch")
-	ebiten.SetWindowSize(1280, 720)
-	return &Game{
-		ctx: ctx,
-		states: NewGameStateMachine(map[uint64]GameState{
-			states.SplashScreenID: states.NewSplashScreen(),
-			states.GameplayID:     states.NewGameplay(),
-		}, states.SplashScreenID),
+var (
+	ClearColor = color.RGBA{100, 149, 237, 255}
+)
+
+// Game States
+var (
+	fsm = state.NewFSM[flinch.Context]()
+
+	bootStateID         = state.Register[boot.State](fsm, boot.New)
+	gameplayID          = state.Register[gameplay.State](fsm, gameplay.New)
+	splashscreenStateID = state.Register[splashscreen.State](fsm, splashscreen.New)
+
+	transitions = state.Transitions{
+		bootStateID: {
+			boot.BootSuccess: splashscreenStateID,
+		},
+		splashscreenStateID: {
+			splashscreen.SplashscreenComplete: gameplayID,
+		},
 	}
+)
+
+type Drawable interface {
+	Draw(ctx *flinch.Context)
 }
 
-func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
-	width, height := g.states.Layout(g.ctx, outsideWidth, outsideHeight)
-
-	// Ensure the context's screen buffer is the correct size.
-	g.ctx.Screen().SetSize(width, height)
-
-	return width, height
+type ggame struct {
+	ctx *flinch.Context
+	op  *ebiten.DrawImageOptions
 }
 
-func (g *Game) Update() error {
+func Run(ctx *flinch.Context) error {
+	ebiten.SetWindowSize(TargetWidth, TargetHeight)
+	ebiten.SetWindowTitle("Flinch")
+
+	ctx.Screen().SetSize(TargetWidth, TargetHeight)
+
+	fsm.SetNext(bootStateID)
+	fsm.SetTransitions(transitions)
+
+	return ebiten.RunGame(&ggame{
+		ctx: ctx,
+		op: &ebiten.DrawImageOptions{
+			Filter: ebiten.FilterLinear,
+		},
+	})
+}
+
+func (g *ggame) Layout(outsideWidth, outsideHeight int) (int, int) {
+	return TargetWidth, TargetHeight
+}
+
+func (g *ggame) Update() error {
 	// Debug: Exit the game when the Escape key is pressed.
 	if ebiten.IsKeyPressed(ebiten.KeyEscape) {
 		return ebiten.Termination
@@ -47,16 +83,19 @@ func (g *Game) Update() error {
 	// Update the game context.
 	g.ctx.Update()
 
-	// Update the game state.
-	return g.states.Update(g.ctx)
+	// Process the FSM.
+	return fsm.Process(g.ctx)
 }
 
-func (g *Game) Draw(screen *ebiten.Image) {
-	g.ctx.Screen().Buffer().Clear()
+func (g *ggame) Draw(screen *ebiten.Image) {
+	buffer := g.ctx.Screen().Buffer()
 
-	// Draw the current game state.
-	g.states.Draw(g.ctx)
+	if !fsm.IsTransitioning() {
+		if drawable, ok := fsm.State().(Drawable); ok {
+			buffer.Fill(ClearColor)
+			drawable.Draw(g.ctx)
+		}
+	}
 
-	// Draw the game context's screen buffer to the application's screen.
-	screen.DrawImage(g.ctx.Screen().Buffer(), nil)
+	screen.DrawImage(buffer, g.op)
 }

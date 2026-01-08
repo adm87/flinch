@@ -30,6 +30,16 @@ func Set(asset resources.Asset, img *ebiten.Image) {
 	cache[asset] = img
 }
 
+func Delete(asset resources.Asset) {
+	mu.Lock()
+	defer mu.Unlock()
+
+	if img, exists := cache[asset]; exists {
+		img.Deallocate()
+		delete(cache, asset)
+	}
+}
+
 // NewLoader creates a new LoadingTask that loads the specified assets into the image cache.
 func NewLoader(assets ...resources.Asset) resources.LoadingTask {
 	return func(ctx *flinch.Context, rs *resources.ResourceSystem, batchID uint64) error {

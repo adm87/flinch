@@ -33,7 +33,7 @@ func Command() *cobra.Command {
 		},
 		Run: func(cmd *cobra.Command, args []string) {
 			ctx := flinch.NewContext(cmd.Context(), cmd.OutOrStdout())
-			if err := ebiten.RunGame(game.NewGame(ctx)); err != nil {
+			if err := game.Run(ctx); err != nil {
 				if errors.Is(err, ebiten.Termination) {
 					ctx.Logger().Info("Game terminated")
 					os.Exit(0)
